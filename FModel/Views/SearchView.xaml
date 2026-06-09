@@ -922,7 +922,7 @@
                                                 <Setter Property="Text" Value="Build Index" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding TextSearchTab.IsIndexing}" Value="True">
-                                                        <Setter Property="Text" Value="Indexing…" />
+                                                        <Setter Property="Text" Value="Indexing..." />
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding TextSearchTab.IsIndexed}" Value="True">
                                                         <Setter Property="Text" Value="Rebuild Index" />

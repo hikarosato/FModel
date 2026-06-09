@@ -216,7 +216,7 @@ public partial class MainWindow
         var file = AssetsListName.SelectedItem is GameFileViewModel gvm ? gvm.Asset : null;
         if (file is null)
         {
-            MessageBox.Show( "Спочатку виберіть шрифтовий файл (.ufont / .ttf / .otf) у списку пакетів.", "Font Preview", MessageBoxButton.OK);
+            MessageBox.Show( "РЎРїРѕС‡Р°С‚РєСѓ РІРёР±РµСЂС–С‚СЊ С€СЂРёС„С‚РѕРІРёР№ С„Р°Р№Р» (.ufont / .ttf / .otf) Сѓ СЃРїРёСЃРєСѓ РїР°РєРµС‚С–РІ.", "Font Preview", MessageBoxButton.OK);
             return;
         }
 
@@ -310,7 +310,7 @@ public partial class MainWindow
         var selectedItems = listBox.SelectedItems.OfType<GameFileViewModel>().ToArray();
         if (selectedItems.Length == 0) return;
 
-        // Якщо один шрифтовий файл — відкрити FontPreview замість Extract
+        // РЇРєС‰Рѕ РѕРґРёРЅ С€СЂРёС„С‚РѕРІРёР№ С„Р°Р№Р» вЂ” РІС–РґРєСЂРёС‚Рё FontPreview Р·Р°РјС–СЃС‚СЊ Extract
         if (selectedItems.Length == 1)
         {
             var ext = selectedItems[0].Asset.Extension.ToLowerInvariant();

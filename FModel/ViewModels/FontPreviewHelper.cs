@@ -1,4 +1,4 @@
-﻿using CUE4Parse.FileProvider.Objects;
+using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Assets.Exports.Engine.Font;
 using FModel.Services;
 using Org.BouncyCastle.Utilities;
