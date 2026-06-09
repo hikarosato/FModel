@@ -78,7 +78,7 @@ public class ApplicationViewModel : ViewModel
     public CopyCommand CopyCommand => _copyCommand ??= new CopyCommand(this);
     private CopyCommand _copyCommand;
 
-    public string InitialWindowTitle => $"FModel Text Searcher by Hikaro ({Constants.APP_SHORT_COMMIT_ID}) - 9 χεπ. 2026";
+    public string InitialWindowTitle => $"FModel Text Searcher by Hikaro ({Constants.APP_SHORT_COMMIT_ID}) - 9 Ρ‡ΠµΡ€. 2026";
     public string GameDisplayName => CUE4Parse.Provider.GameDisplayName ?? "Unknown";
     public string TitleExtra => $"({UserSettings.Default.CurrentDir.UeVersion}){(Build != EBuildKind.Release ? $" ({Build})" : "")}";
 
