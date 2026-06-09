@@ -117,6 +117,7 @@ public partial class SearchView
     }
 
     // Text Search
+
     private async void OnTextSearchClick(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_textSearchViewModel.SearchText)) return;
@@ -165,7 +166,6 @@ public partial class SearchView
         {
             _textSearchViewModel.SearchText = string.Empty;
         }
-        UpdateTextSearchButtonIcon();
     }
 
     // Index Build
@@ -193,6 +193,7 @@ public partial class SearchView
     }
 
     // Icon helpers
+
     private void UpdateTextSearchButtonIcon()
     {
         if (!Dispatcher.CheckAccess())
@@ -214,6 +215,7 @@ public partial class SearchView
     }
 
     // Result navigation
+
     private async void OnTextResultDoubleClick(object sender, RoutedEventArgs e)
     {
         if (TextSearchListView?.SelectedItem is not TextSearchResult result || result.File == null)
@@ -273,6 +275,7 @@ public partial class SearchView
 
         await NavigateToAssetAndSelect(entry);
     }
+
     private async void OnGoToRefPackage(object sender, RoutedEventArgs e)
     {
         if (_refViewModel.RefFile is not GameFile entry)
@@ -327,16 +330,16 @@ public partial class SearchView
         if (_currentTab == ESearchViewTab.TextSearchView)
             OnTextSearchClick(sender, e);
         else
-        CurrentViewModel?.RefreshFilter();
+            CurrentViewModel?.RefreshFilter();
     }
 
     private void OnStateChanged(object sender, EventArgs e)
     {
         if (WindowState == WindowState.Normal)
         {
-                Activate();
-                CurrentTextBox?.Focus();
-                CurrentTextBox?.SelectAll();
+            Activate();
+            CurrentTextBox?.Focus();
+            CurrentTextBox?.SelectAll();
         }
     }
 

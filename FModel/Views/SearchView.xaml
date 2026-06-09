@@ -880,7 +880,7 @@
                                     </ToggleButton.Style>
                                 </ToggleButton>
 
-                                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="5 0" />
+                                <Rectangle Width="1" Height="24" Fill="#414255" Margin="5 0" VerticalAlignment="Center"/>
 
                                 <!-- Index selector -->
                                 <TextBlock Text="Index:" VerticalAlignment="Center" Margin="0 0 5 0" />
@@ -906,6 +906,8 @@
                                 <Button Padding="8 3" Margin="0 0 5 0" Click="OnBuildIndexClick">
                                     <Button.Style>
                                         <Style TargetType="Button" BasedOn="{StaticResource {x:Static adonisUi:Styles.ToolbarButton}}">
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BackgroundBrush}}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BorderBrush}}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding TextSearchTab.IsIndexing}" Value="True">
                                                     <Setter Property="IsEnabled" Value="False" />

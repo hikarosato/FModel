@@ -31,7 +31,7 @@ public class TextSearchViewModel : ViewModel
     // Constants
     private static readonly HashSet<string> _excludedTextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".uexp", ".ubulk", ".png", ".svg", ".psd", ".uptnl", ".bin", ".uplugin", ".upluginmanifest", ".uproject", ".res", ".dict", ".icu", ".tps", ".locmeta", 
+        ".uexp", ".ubulk", ".png", ".svg", ".psd", ".uptnl", ".bin", ".uplugin", ".upluginmanifest", ".uproject", ".res", ".dict", ".icu", ".tps", ".locmeta",
         ".ushaderbytecode", ".upipelinecache", ".hlsl", ".glsl"
     };
 
@@ -243,7 +243,6 @@ public class TextSearchViewModel : ViewModel
 
             var provider = ApplicationService.ApplicationView.CUE4Parse.Provider;
 
-            int matchedFilesCount = 0;
             var pendingResults = new List<TextSearchResult>();
             var lockObj = new object();
 
@@ -266,10 +265,7 @@ public class TextSearchViewModel : ViewModel
                             var matches = SearchInFile(file, searchPattern, regex, comparisonType, provider);
                             if (matches is { Count: > 0 })
                             {
-                                Interlocked.Increment(ref matchedFilesCount);
-
                                 List<TextSearchResult> batch = null;
-                                int snapshot = 0;
 
                                 lock (lockObj)
                                 {
@@ -278,7 +274,6 @@ public class TextSearchViewModel : ViewModel
                                     {
                                         batch = [.. pendingResults];
                                         pendingResults.Clear();
-                                        snapshot = matchedFilesCount;
                                     }
                                 }
 
@@ -287,7 +282,7 @@ public class TextSearchViewModel : ViewModel
                                     System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                                     {
                                         SearchResults.AddRange(batch);
-                                        ResultsCount = snapshot;
+                                        ResultsCount = SearchResultsView.Count;
                                     });
                                 }
                             }
@@ -330,15 +325,13 @@ public class TextSearchViewModel : ViewModel
             finally
             {
                 IsSearching = false;
+                SearchTime = FormatElapsed(DateTime.Now - startTime);
                 await System.Windows.Application.Current.Dispatcher.InvokeAsync(
                     () => ResultsCount = SearchResultsView.Count);
             }
-
-            SearchTime = FormatElapsed(DateTime.Now - startTime);
         }
         catch
         {
-            IsSearching = false;
             throw;
         }
     }
@@ -407,30 +400,21 @@ public class TextSearchViewModel : ViewModel
 
                 using var setup = conn.CreateCommand();
                 setup.CommandText = """
-                    PRAGMA journal_mode = WAL;
-                    PRAGMA synchronous  = NORMAL;
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous  = NORMAL;
 
-                    CREATE TABLE IF NOT EXISTS strings (
-                        id           INTEGER PRIMARY KEY,
-                        file_path    TEXT NOT NULL,
-                        source       TEXT NOT NULL,
-                        namespace    TEXT,
-                        key          TEXT,
-                        property     TEXT,
-                        value        TEXT NOT NULL
-                    );
+                CREATE TABLE IF NOT EXISTS strings (
+                    id           INTEGER PRIMARY KEY,
+                    file_path    TEXT NOT NULL,
+                    source       TEXT NOT NULL,
+                    namespace    TEXT,
+                    key          TEXT,
+                    property     TEXT,
+                    value        TEXT NOT NULL
+                );
 
-                    CREATE VIRTUAL TABLE IF NOT EXISTS strings_fts USING fts5(
-                        value,
-                        file_path UNINDEXED,
-                        namespace UNINDEXED,
-                        key       UNINDEXED,
-                        property  UNINDEXED,
-                        source    UNINDEXED,
-                        content   = 'strings',
-                        content_rowid = 'id'
-                    );
-                    """;
+                CREATE INDEX IF NOT EXISTS idx_strings_source ON strings(source);
+                """;
                 setup.ExecuteNonQuery();
 
                 const int BATCH_SIZE = 500;
@@ -443,9 +427,9 @@ public class TextSearchViewModel : ViewModel
                     using var ins = c.CreateCommand();
                     ins.Transaction = tx;
                     ins.CommandText = """
-                        INSERT INTO strings (file_path, source, namespace, key, property, value)
-                        VALUES ($fp, $src, $ns, $k, $prop, $val)
-                        """;
+                    INSERT INTO strings (file_path, source, namespace, key, property, value)
+                    VALUES ($fp, $src, $ns, $k, $prop, $val)
+                    """;
                     var pFp = ins.Parameters.Add("$fp", SqliteType.Text);
                     var pSrc = ins.Parameters.Add("$src", SqliteType.Text);
                     var pNs = ins.Parameters.Add("$ns", SqliteType.Text);
@@ -519,11 +503,6 @@ public class TextSearchViewModel : ViewModel
 
                 FlushBatch(conn);
 
-                IndexStatus = "Building FTS index...";
-                using var ftsRebuild = conn.CreateCommand();
-                ftsRebuild.CommandText = "INSERT INTO strings_fts(strings_fts) VALUES ('rebuild');";
-                ftsRebuild.ExecuteNonQuery();
-
                 using var ckpt = conn.CreateCommand();
                 ckpt.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
                 ckpt.ExecuteNonQuery();
@@ -591,6 +570,20 @@ public class TextSearchViewModel : ViewModel
 
         try
         {
+            var allowedSources = new List<string>();
+            if (SearchUasset) allowedSources.Add("uasset");
+            if (SearchUmap) allowedSources.Add("umap");
+            if (SearchLocres) allowedSources.Add("locres");
+            if (SearchTextFiles) allowedSources.Add("text");
+
+            if (allowedSources.Count == 0)
+            {
+                IsSearching = false;
+                return;
+            }
+
+            var srcPlaceholders = string.Join(",", allowedSources.Select((_, i) => $"$src{i}"));
+
             var results = new List<TextSearchResult>();
 
             await Task.Run(() =>
@@ -604,10 +597,13 @@ public class TextSearchViewModel : ViewModel
 
                 if (HasRegexEnabled)
                 {
-                    cmd.CommandText = """
+                    cmd.CommandText = $"""
                         SELECT file_path, source, namespace, key, property, value
                         FROM strings
+                        WHERE source IN ({srcPlaceholders})
                         """;
+                    for (int i = 0; i < allowedSources.Count; i++)
+                        cmd.Parameters.AddWithValue($"$src{i}", allowedSources[i]);
                     var regexOpts = HasMatchCaseEnabled ? RegexOptions.None : RegexOptions.IgnoreCase;
                     var rx = new Regex(searchPattern, regexOpts | RegexOptions.Compiled);
 
@@ -622,15 +618,17 @@ public class TextSearchViewModel : ViewModel
                 }
                 else
                 {
-                    var ftsQuery = EscapeFtsQuery(searchPattern);
-                    cmd.CommandText = """
+                    var srcFilter = string.Join(" OR ", allowedSources.Select((s, i) => $"s.source = $src{i}"));
+                    var likePattern = "%" + searchPattern.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+                    cmd.CommandText = $"""
                         SELECT s.file_path, s.source, s.namespace, s.key, s.property, s.value
-                        FROM strings_fts
-                        JOIN strings s ON strings_fts.rowid = s.id
-                        WHERE strings_fts MATCH $query
-                        ORDER BY rank
+                        FROM strings s
+                        WHERE s.value LIKE $pattern ESCAPE '\'
+                          AND ({srcFilter})
                         """;
-                    cmd.Parameters.AddWithValue("$query", ftsQuery);
+                    for (int i = 0; i < allowedSources.Count; i++)
+                        cmd.Parameters.AddWithValue($"$src{i}", allowedSources[i]);
+                    cmd.Parameters.AddWithValue("$pattern", likePattern);
 
                     using var reader = cmd.ExecuteReader();
                     while (reader.Read())
@@ -845,9 +843,6 @@ public class TextSearchViewModel : ViewModel
             MatchedText = TruncateText(value, 200),
         });
     }
-
-    private static string EscapeFtsQuery(string pattern)
-        => "\"" + pattern.Replace("\"", "\"\"") + "\"";
 
     private static bool IsMatch(string text, string searchPattern, Regex regex, StringComparison comparison)
     {
