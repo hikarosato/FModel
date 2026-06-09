@@ -1,20 +1,23 @@
+using CUE4Parse.FileProvider.Objects;
+using FModel.Services;
+using FModel.Settings;
+using FModel.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using CUE4Parse.FileProvider.Objects;
-using FModel.Services;
-using FModel.ViewModels;
 
 namespace FModel.Views;
 
 public enum ESearchViewTab
 {
     SearchView,
-    RefView
+    RefView,
+    TextSearchView
 }
 
 public partial class SearchView
@@ -23,8 +26,11 @@ public partial class SearchView
     private ApplicationViewModel _applicationView => ApplicationService.ApplicationView;
     private SearchViewModel _searchViewModel => _applicationView.CUE4Parse.SearchVm;
     private SearchViewModel _refViewModel => _applicationView.CUE4Parse.RefVm;
+    private TextSearchViewModel _textSearchViewModel => _applicationView.CUE4Parse.TextSearchVm;
 
     private ESearchViewTab _currentTab = ESearchViewTab.SearchView;
+    private CancellationTokenSource _searchCancellation;
+    private CancellationTokenSource _indexCancellation;
 
     public SearchView()
     {
@@ -33,10 +39,21 @@ public partial class SearchView
             mainApplication = _applicationView,
             SearchTab = _searchViewModel,
             RefTab = _refViewModel,
+            TextSearchTab = _textSearchViewModel,
         };
         InitializeComponent();
 
+        _textSearchViewModel.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(_textSearchViewModel.IsSearching)
+             || e.PropertyName == nameof(_textSearchViewModel.IsIndexing))
+            {
+                UpdateTextSearchButtonIcon();
+            }
+        };
+
         Activate();
+        _textSearchViewModel.RefreshAvailableIndexes();
         SearchTextBox.Focus();
         SearchTextBox.SelectAll();
     }
@@ -48,6 +65,7 @@ public partial class SearchView
         {
             ESearchViewTab.SearchView => 0,
             ESearchViewTab.RefView => 1,
+            ESearchViewTab.TextSearchView => 2,
             _ => SearchTabControl.SelectedIndex
         };
         WindowState = WindowState.Normal;
@@ -83,6 +101,7 @@ public partial class SearchView
         {
             0 => ESearchViewTab.SearchView,
             1 => ESearchViewTab.RefView,
+            2 => ESearchViewTab.TextSearchView,
             _ => _currentTab
         };
         CurrentTextBox?.Focus();
@@ -92,10 +111,131 @@ public partial class SearchView
     private void OnDeleteSearchClick(object sender, RoutedEventArgs e)
     {
         var viewModel = CurrentViewModel;
-        if (viewModel == null)
-            return;
+        if (viewModel == null) return;
         viewModel.FilterText = string.Empty;
         viewModel.RefreshFilter();
+    }
+
+    // Text Search
+    private async void OnTextSearchClick(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_textSearchViewModel.SearchText)) return;
+        if (_textSearchViewModel.IsSearching) return;
+
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = new CancellationTokenSource();
+
+        _textSearchViewModel.SearchTime = string.Empty;
+
+        try
+        {
+            // If an index exists, search it; otherwise fall back to live scan
+            if (!string.IsNullOrEmpty(_textSearchViewModel.SelectedIndexPath) && System.IO.File.Exists(_textSearchViewModel.SelectedIndexPath))
+            {
+                await _threadWorkerView.Begin(async cancellationToken =>
+                {
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken, _searchCancellation.Token);
+                    await _textSearchViewModel.SearchInIndex(linked.Token);
+                });
+            }
+            else
+            {
+                var allFiles = _applicationView.CUE4Parse.Provider.Files.Values.ToList();
+                await _threadWorkerView.Begin(async cancellationToken =>
+                {
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken, _searchCancellation.Token);
+                    await _textSearchViewModel.SearchInFiles(allFiles, linked.Token);
+                });
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void OnTextSearchClearOrStopClick(object sender, RoutedEventArgs e)
+    {
+        if (_textSearchViewModel.IsSearching || _textSearchViewModel.IsIndexing)
+        {
+            _searchCancellation?.Cancel();
+            _indexCancellation?.Cancel();
+        }
+        else
+        {
+            _textSearchViewModel.SearchText = string.Empty;
+        }
+        UpdateTextSearchButtonIcon();
+    }
+
+    // Index Build
+    private async void OnBuildIndexClick(object sender, RoutedEventArgs e)
+    {
+        if (_textSearchViewModel.IsIndexing) return;
+
+        _indexCancellation?.Cancel();
+        _indexCancellation?.Dispose();
+        _indexCancellation = new CancellationTokenSource();
+
+        var allFiles = _applicationView.CUE4Parse.Provider.Files.Values.ToList();
+        var gameName = _applicationView.GameDisplayName;
+        try
+        {
+            await _threadWorkerView.Begin(async cancellationToken =>
+            {
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken, _indexCancellation.Token);
+                var ueVersion = UserSettings.Default.CurrentDir.UeVersion.ToString();
+                await _textSearchViewModel.BuildIndex(allFiles, ueVersion, gameName, linked.Token);
+            });
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // Icon helpers
+    private void UpdateTextSearchButtonIcon()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(UpdateTextSearchButtonIcon);
+            return;
+        }
+
+        var button = FindName("TextSearchClearStopButton") as Button;
+        if (button?.Content is Grid grid && grid.Children.Count >= 2)
+        {
+            var clearIcon = grid.Children[0] as Viewbox;
+            var stopIcon = grid.Children[1] as Viewbox;
+            bool busy = _textSearchViewModel.IsSearching || _textSearchViewModel.IsIndexing;
+
+            clearIcon!.Visibility = busy ? Visibility.Collapsed : Visibility.Visible;
+            stopIcon!.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    // Result navigation
+    private async void OnTextResultDoubleClick(object sender, RoutedEventArgs e)
+    {
+        if (TextSearchListView?.SelectedItem is not TextSearchResult result || result.File == null)
+            return;
+
+        await NavigateToAssetAndSelect(result.File);
+    }
+
+    private void OnCopyMatchedText(object sender, RoutedEventArgs e)
+    {
+        if (TextSearchListView?.SelectedItem is not TextSearchResult result)
+            return;
+
+        try
+        {
+            Clipboard.SetText(result.MatchedText);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to copy text: {ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private SearchViewModel CurrentViewModel => _currentTab switch
@@ -109,6 +249,7 @@ public partial class SearchView
     {
         ESearchViewTab.SearchView => SearchListView,
         ESearchViewTab.RefView => RefListView,
+        ESearchViewTab.TextSearchView => TextSearchListView,
         _ => null
     };
 
@@ -116,6 +257,7 @@ public partial class SearchView
     {
         ESearchViewTab.SearchView => SearchTextBox,
         ESearchViewTab.RefView => RefSearchTextBox,
+        ESearchViewTab.TextSearchView => TextSearchBox,
         _ => null
     };
 
@@ -180,20 +322,30 @@ public partial class SearchView
 
     private void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter)
-            return;
+        if (e.Key != Key.Enter) return;
+
+        if (_currentTab == ESearchViewTab.TextSearchView)
+            OnTextSearchClick(sender, e);
+        else
         CurrentViewModel?.RefreshFilter();
     }
 
     private void OnStateChanged(object sender, EventArgs e)
     {
-        switch (WindowState)
+        if (WindowState == WindowState.Normal)
         {
-            case WindowState.Normal:
                 Activate();
                 CurrentTextBox?.Focus();
                 CurrentTextBox?.SelectAll();
-                return;
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _indexCancellation?.Cancel();
+        _indexCancellation?.Dispose();
+        base.OnClosed(e);
     }
 }

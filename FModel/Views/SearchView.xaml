@@ -14,6 +14,9 @@
             <Setter Property="Title" Value="Search For Packages" />
         </Style>
     </adonisControls:AdonisWindow.Style>
+    <adonisControls:AdonisWindow.Resources>
+        <converters:FileNameWithoutExtensionConverter x:Key="FileNameWithoutExtensionConverter"/>
+    </adonisControls:AdonisWindow.Resources>
     <Grid Margin="5 5">
         <GroupBox adonisExtensions:LayerExtension.Layer="2" Padding="{adonisUi:Space 0}" Background="Transparent">
             <TabControl x:Name="SearchTabControl" SelectionChanged="OnTabItemChange">
@@ -697,6 +700,399 @@
                                                 </MultiBinding>
                                             </MenuItem.CommandParameter>
                                         </MenuItem>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </ListView.ContextMenu>
+                        </ListView>
+                    </Grid>
+                </TabItem>
+                <TabItem Style="{StaticResource TabItemFillSpace}" Header="By Text Content">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <!-- Search Input Section -->
+                        <Grid Grid.Row="0" Margin="0 0 0 5">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Grid.Row="0" Grid.Column="0" ZIndex="1" HorizontalAlignment="Left" Margin="5 2 0 0">
+                                <Viewbox Width="16" Height="16">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource SearchIcon}" />
+                                    </Canvas>
+                                </Viewbox>
+                            </Grid>
+                            <TextBox x:Name="TextSearchBox" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Padding="25 0 0 0" AcceptsTab="False" AcceptsReturn="False" 
+                                     Text="{Binding TextSearchTab.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                        <Setter Property="adonisExtensions:WatermarkExtension.Watermark" Value="Write text to search in file contents and press enter..." />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TextSearchTab.HasRegexEnabled}" Value="True">
+                                                <Setter Property="adonisExtensions:WatermarkExtension.Watermark" Value="Write regex pattern to search in file contents and press enter..." />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                                <ToggleButton ToolTip="Match Case" Padding="5" IsChecked="{Binding TextSearchTab.HasMatchCaseEnabled}"
+                                              Style="{DynamicResource {x:Static adonisUi:Styles.ToolbarToggleButton}}">
+                                    <Viewbox Width="16" Height="16" HorizontalAlignment="Center">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource MatchCaseIcon}" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </ToggleButton>
+                                <ToggleButton ToolTip="Regex" Padding="5" IsChecked="{Binding TextSearchTab.HasRegexEnabled}" 
+                                              Style="{DynamicResource {x:Static adonisUi:Styles.ToolbarToggleButton}}">
+                                    <Viewbox Width="16" Height="16" HorizontalAlignment="Center">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource RegexIcon}" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </ToggleButton>
+                                <!-- Clear/Stop button - changes based on search state -->
+                                <Button x:Name="TextSearchClearStopButton" Padding="5" Click="OnTextSearchClearOrStopClick" Style="{DynamicResource {x:Static adonisUi:Styles.ToolbarButton}}">
+                                    <Grid>
+                                        <!-- Backspace icon (Clear) - visible when NOT searching -->
+                                        <Viewbox Width="16" Height="16" HorizontalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource BackspaceIcon}"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                        <!-- Stop icon - visible when searching -->
+                                        <Viewbox Width="16" Height="16" HorizontalAlignment="Center" Visibility="Collapsed">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource StopIcon}"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                            <TextBlock Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="10 0 0 0" FontStyle="Italic">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text">
+                                            <Setter.Value>
+                                                <MultiBinding StringFormat="{}{0:# ### ### ##0} Matches found">
+                                                    <Binding Path="TextSearchTab.ResultsCount" FallbackValue="0" />
+                                                </MultiBinding>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <!-- While searching: show progress -->
+                                            <DataTrigger Binding="{Binding TextSearchTab.IsSearching}" Value="True">
+                                                <Setter Property="Text">
+                                                    <Setter.Value>
+                                                        <MultiBinding StringFormat="{}{0:# ### ### ##0} /{1:# ### ### ##0} files">
+                                                            <Binding Path="TextSearchTab.FilesScanned" FallbackValue="0" />
+                                                            <Binding Path="TextSearchTab.TotalFiles" FallbackValue="0" />
+                                                        </MultiBinding>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <!-- File Type Filters -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0 5 0 0">
+                                <TextBlock Text="File Types:" VerticalAlignment="Center" Margin="0 0 10 0" />
+                                <ToggleButton Content=".uasset" Padding="8 3" Margin="0 0 5 0" IsChecked="{Binding TextSearchTab.SearchUasset}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BackgroundBrush}}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BorderBrush}}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentForegroundBrush}}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="False">
+                                                    <Setter Property="Opacity" Value="0.5" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <ToggleButton Content=".umap" Padding="8 3" Margin="0 0 5 0" IsChecked="{Binding TextSearchTab.SearchUmap}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BackgroundBrush}}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BorderBrush}}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentForegroundBrush}}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="False">
+                                                    <Setter Property="Opacity" Value="0.5" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <ToggleButton Content=".locres" Padding="8 3" Margin="0 0 5 0" IsChecked="{Binding TextSearchTab.SearchLocres}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BackgroundBrush}}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BorderBrush}}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentForegroundBrush}}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="False">
+                                                    <Setter Property="Opacity" Value="0.5" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <ToggleButton Content="Text Files" Padding="8 3" IsChecked="{Binding TextSearchTab.SearchTextFiles}">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                            <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BackgroundBrush}}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.Layer1BorderBrush}}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentForegroundBrush}}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource {x:Static adonisUi:Brushes.AccentBrush}}" />
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="False">
+                                                    <Setter Property="Opacity" Value="0.5" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+
+                                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="5 0" />
+
+                                <!-- Index selector -->
+                                <TextBlock Text="Index:" VerticalAlignment="Center" Margin="0 0 5 0" />
+                                <ComboBox Width="220" Margin="0 0 5 0" ItemsSource="{Binding TextSearchTab.AvailableIndexes}" 
+                                          SelectedItem="{Binding TextSearchTab.SelectedIndexPath, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource FileNameWithoutExtensionConverter}}" ToolTip="{Binding}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                    <ComboBox.Style>
+                                        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TextSearchTab.IsIndexing}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ComboBox.Style>
+                                </ComboBox>
+
+                                <!-- Build Index button -->
+                                <Button Padding="8 3" Margin="0 0 5 0" Click="OnBuildIndexClick">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Static adonisUi:Styles.ToolbarButton}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TextSearchTab.IsIndexing}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TextSearchTab.IsSearching}" Value="True">
+                                                    <Setter Property="IsEnabled" Value="False" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <TextBlock VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="Build Index" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TextSearchTab.IsIndexing}" Value="True">
+                                                        <Setter Property="Text" Value="Indexing…" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding TextSearchTab.IsIndexed}" Value="True">
+                                                        <Setter Property="Text" Value="Rebuild Index" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button>
+
+                                <!-- Index status -->
+                                <TextBlock VerticalAlignment="Center" FontStyle="Italic" Margin="0 0 10 0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="" />
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TextSearchTab.IsIndexing}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Setter Property="Text">
+                                                        <Setter.Value>
+                                                            <MultiBinding StringFormat="{}{0:# ### ##0} /{1:# ### ##0} files">
+                                                                <Binding Path="TextSearchTab.FilesScanned" FallbackValue="0" />
+                                                                <Binding Path="TextSearchTab.TotalFiles" FallbackValue="0" />
+                                                            </MultiBinding>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding TextSearchTab.IsIndexing}" Value="False" />
+                                                        <Condition Binding="{Binding TextSearchTab.IndexStatus}" Value="" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </MultiDataTrigger>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding TextSearchTab.IsIndexing}" Value="False" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Setter Property="Text" Value="{Binding TextSearchTab.IndexStatus}" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- Search Time (only visible when not searching and time is available) -->
+                                <TextBlock VerticalAlignment="Center" FontStyle="Italic">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="" />
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding TextSearchTab.IsSearching}" Value="False" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Setter Property="Text">
+                                                        <Setter.Value>
+                                                            <MultiBinding StringFormat="Search duration: {0}">
+                                                                <Binding Path="TextSearchTab.SearchTime" />
+                                                            </MultiBinding>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </MultiDataTrigger>
+                                                <DataTrigger Binding="{Binding TextSearchTab.SearchTime}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding TextSearchTab.SearchTime}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
+                        <!-- Results ListView -->
+                        <ListView Grid.Row="1" x:Name="TextSearchListView" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" 
+                                  ScrollViewer.CanContentScroll="True" ItemsSource="{Binding TextSearchTab.SearchResultsView, IsAsync=True}">
+                            <ListView.Resources>
+                                <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <EventSetter Event="MouseDoubleClick" Handler="OnTextResultDoubleClick" />
+                                </Style>
+                            </ListView.Resources>
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Width="600" Header="File Path">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock HorizontalAlignment="Left" Text="{Binding File.Path}" ToolTip="{Binding File.Path}"/>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                    <GridViewColumn Width="100" Header="Property/Location">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock HorizontalAlignment="Left" Text="{Binding PropertyPath}" ToolTip="{Binding PropertyPath}"/>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                    <GridViewColumn Width="300" Header="Matched Text">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock HorizontalAlignment="Left" Text="{Binding MatchedText}" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding MatchedText}"/>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                    <GridViewColumn Width="250" Header="Archive">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock HorizontalAlignment="Left" Text="{Binding File.Vfs.Name}" ToolTip="{Binding File.Vfs.Name}"/>
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                </GridView>
+                            </ListView.View>
+                            <ListView.Style>
+                                <Style TargetType="ListView" BasedOn="{StaticResource {x:Type ListView}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Items.Count, RelativeSource={RelativeSource Self}, FallbackValue=0}" Value="0">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate>
+                                                        <Grid>
+                                                            <TextBlock FontWeight="SemiBold" TextAlignment="Center"
+                                                      Foreground="{DynamicResource {x:Static adonisUi:Brushes.ErrorBrush}}" 
+                                                      Margin="0 10 0 0">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Text" Value="No text matches found" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding DataContext.TextSearchTab.IsSearching, RelativeSource={RelativeSource AncestorType=ListView}}" Value="True">
+                                                                                <Setter Property="Text" Value="Searching text content..." />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </Grid>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListView.Style>
+                            <ListView.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Go To File" Click="OnTextResultDoubleClick">
+                                        <MenuItem.Icon>
+                                            <Viewbox Width="16" Height="16">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource GoToIcon}" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Copy Matched Text" Click="OnCopyMatchedText">
+                                        <MenuItem.Icon>
+                                            <Viewbox Width="16" Height="16">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Fill="{DynamicResource {x:Static adonisUi:Brushes.ForegroundBrush}}" Data="{StaticResource CopyIcon}" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </MenuItem.Icon>
                                     </MenuItem>
                                 </ContextMenu>
                             </ListView.ContextMenu>

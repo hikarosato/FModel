@@ -87,7 +87,7 @@ public partial class MainWindow
     {
         var newOrUpdated = UserSettings.Default.ShowChangelog;
 #if !DEBUG
-        ApplicationService.ApiEndpointView.FModelApi.CheckForUpdates(true);
+        ApplicationService.ApiEndpointView.FModelApi.CheckForUpdates(false);
 #endif
 
         switch (UserSettings.Default.AesReload)
@@ -205,6 +205,24 @@ public partial class MainWindow
         searchView.FocusTab(ESearchViewTab.RefView);
     }
 
+    private void OnTextSearchView(object sender, RoutedEventArgs e)
+    {
+        var searchView = Helper.GetWindow<SearchView>("Search For Packages", () => new SearchView().Show());
+        searchView.FocusTab(ESearchViewTab.TextSearchView);
+    }
+
+    private void OnFontPreviewClick(object sender, RoutedEventArgs e)
+    {
+        var file = AssetsListName.SelectedItem is GameFileViewModel gvm ? gvm.Asset : null;
+        if (file is null)
+        {
+            MessageBox.Show( "Спочатку виберіть шрифтовий файл (.ufont / .ttf / .otf) у списку пакетів.", "Font Preview", MessageBoxButton.OK);
+            return;
+        }
+
+        FontPreviewHelper.OpenPreview(file);
+    }
+
     private void OnTabItemChange(object sender, SelectionChangedEventArgs e)
     {
         if (e.OriginalSource is not TabControl tabControl)
@@ -289,10 +307,26 @@ public partial class MainWindow
     {
         if (sender is not ListBox listBox) return;
 
-        var selectedItems = listBox.SelectedItems.OfType<GameFileViewModel>().Select(gvm => gvm.Asset).ToArray();
+        var selectedItems = listBox.SelectedItems.OfType<GameFileViewModel>().ToArray();
         if (selectedItems.Length == 0) return;
 
-        await _threadWorkerView.Begin(cancellationToken => { _applicationView.CUE4Parse.ExtractSelected(cancellationToken, selectedItems); });
+        // Якщо один шрифтовий файл — відкрити FontPreview замість Extract
+        if (selectedItems.Length == 1)
+        {
+            var ext = selectedItems[0].Asset.Extension.ToLowerInvariant();
+            if (ext is "ufont" or "ttf" or "otf")
+            {
+                e.Handled = true;
+                FontPreviewHelper.OpenPreview(selectedItems[0].Asset);
+                return;
+            }
+        }
+
+        await _threadWorkerView.Begin(cancellationToken =>
+        {
+            _applicationView.CUE4Parse.ExtractSelected(cancellationToken,
+                selectedItems.Select(gvm => gvm.Asset).ToArray());
+        });
     }
 
     private void OnClearFilterClick(object sender, RoutedEventArgs e)

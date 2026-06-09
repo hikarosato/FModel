@@ -44,7 +44,6 @@ using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Exports.Verse;
 using CUE4Parse.UE4.Assets.Exports.Wwise;
-using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.BinaryConfig;
 using CUE4Parse.UE4.CriWare;
 using CUE4Parse.UE4.CriWare.Readers;
@@ -148,6 +147,7 @@ public class CUE4ParseViewModel : ViewModel
     public AssetsFolderViewModel AssetsFolder { get; }
     public SearchViewModel SearchVm { get; }
     public SearchViewModel RefVm { get; }
+    public TextSearchViewModel TextSearchVm { get; }
     public TabControlViewModel TabControl { get; }
     public ConfigIni IoStoreOnDemand { get; }
     private Lazy<WwiseProvider> _wwiseProviderLazy;
@@ -216,6 +216,7 @@ public class CUE4ParseViewModel : ViewModel
         AssetsFolder = new AssetsFolderViewModel();
         SearchVm = new SearchViewModel();
         RefVm = new SearchViewModel();
+        TextSearchVm = new TextSearchViewModel();
         TabControl = new TabControlViewModel();
         IoStoreOnDemand = new ConfigIni(nameof(IoStoreOnDemand));
     }
