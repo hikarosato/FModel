@@ -1,5 +1,6 @@
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Assets.Exports;
+using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Objects.Properties;
 using CUE4Parse.UE4.Objects.Core.i18N;
 using CUE4Parse.UE4.Objects.UObject;
@@ -400,21 +401,21 @@ public class TextSearchViewModel : ViewModel
 
                 using var setup = conn.CreateCommand();
                 setup.CommandText = """
-                PRAGMA journal_mode = WAL;
-                PRAGMA synchronous  = NORMAL;
+                    PRAGMA journal_mode = WAL;
+                    PRAGMA synchronous  = NORMAL;
 
-                CREATE TABLE IF NOT EXISTS strings (
-                    id           INTEGER PRIMARY KEY,
-                    file_path    TEXT NOT NULL,
-                    source       TEXT NOT NULL,
-                    namespace    TEXT,
-                    key          TEXT,
-                    property     TEXT,
-                    value        TEXT NOT NULL
-                );
+                    CREATE TABLE IF NOT EXISTS strings (
+                        id           INTEGER PRIMARY KEY,
+                        file_path    TEXT NOT NULL,
+                        source       TEXT NOT NULL,
+                        namespace    TEXT,
+                        key          TEXT,
+                        property     TEXT,
+                        value        TEXT NOT NULL
+                    );
 
-                CREATE INDEX IF NOT EXISTS idx_strings_source ON strings(source);
-                """;
+                    CREATE INDEX IF NOT EXISTS idx_strings_source ON strings(source);
+                    """;
                 setup.ExecuteNonQuery();
 
                 const int BATCH_SIZE = 500;
@@ -427,9 +428,9 @@ public class TextSearchViewModel : ViewModel
                     using var ins = c.CreateCommand();
                     ins.Transaction = tx;
                     ins.CommandText = """
-                    INSERT INTO strings (file_path, source, namespace, key, property, value)
-                    VALUES ($fp, $src, $ns, $k, $prop, $val)
-                    """;
+                        INSERT INTO strings (file_path, source, namespace, key, property, value)
+                        VALUES ($fp, $src, $ns, $k, $prop, $val)
+                        """;
                     var pFp = ins.Parameters.Add("$fp", SqliteType.Text);
                     var pSrc = ins.Parameters.Add("$src", SqliteType.Text);
                     var pNs = ins.Parameters.Add("$ns", SqliteType.Text);
@@ -702,7 +703,8 @@ public class TextSearchViewModel : ViewModel
         catch { }
     }
 
-    private static void WalkUObjectProperties(UObject obj, string basePath, List<(string ns, string key, string prop, string value)> out_, int depth = 0)
+    private static void WalkUObjectProperties(UObject obj, string basePath,
+        List<(string ns, string key, string prop, string value)> out_, int depth = 0)
     {
         if (obj == null || depth > 8) return;
 
@@ -710,40 +712,105 @@ public class TextSearchViewModel : ViewModel
         {
             if (prop?.Tag == null) continue;
             var propPath = $"{basePath}.{prop.Name.Text}";
-            try
-            {
-                switch (prop.Tag)
-                {
-                    case FPropertyTagType<FText> textTag:
-                        {
-                            var str = textTag.Value.Text ?? textTag.Value.ToString();
-                            if (!string.IsNullOrWhiteSpace(str))
-                                out_.Add((null, null, propPath, str));
-                            break;
-                        }
-                    case FPropertyTagType<FString> strTag:
-                        {
-                            var str = strTag.Value.Text;
-                            if (!string.IsNullOrWhiteSpace(str))
-                                out_.Add((null, null, propPath, str));
-                            break;
-                        }
-                    case FPropertyTagType<FName> nameTag:
-                        {
-                            var str = nameTag.Value.Text;
-                            if (!string.IsNullOrWhiteSpace(str) && !str.StartsWith("None"))
-                                out_.Add((null, null, propPath, str));
-                            break;
-                        }
-                    default:
-                        {
-                            if (prop.Tag.GenericValue is UObject nested)
-                                WalkUObjectProperties(nested, propPath, out_, depth + 1);
-                            break;
-                        }
-                }
-            }
+            try { WalkTag(prop.Tag, propPath, out_, depth); }
             catch { }
+        }
+    }
+
+    private static void WalkStructFallback(FStructFallback fallback, string basePath,
+        List<(string ns, string key, string prop, string value)> out_, int depth)
+    {
+        foreach (var inner in fallback.Properties)
+        {
+            if (inner?.Tag == null) continue;
+            var innerPath = $"{basePath}.{inner.Name.Text}";
+            try { WalkTag(inner.Tag, innerPath, out_, depth); }
+            catch { }
+        }
+    }
+
+    private static void WalkTag(FPropertyTagType tag, string propPath,
+        List<(string ns, string key, string prop, string value)> out_, int depth)
+    {
+        if (tag == null || depth > 8) return;
+
+        switch (tag)
+        {
+            case FPropertyTagType<FText> textTag:
+                {
+                    var ftext = textTag.Value;
+                    string str = ftext.HistoryType switch
+                    {
+                        ETextHistoryType.Base when ftext.TextHistory is FTextHistory.Base b =>
+                            !string.IsNullOrWhiteSpace(b.LocalizedString) ? b.LocalizedString : b.SourceString,
+                        ETextHistoryType.StringTableEntry when ftext.TextHistory is FTextHistory.StringTableEntry s =>
+                            !string.IsNullOrWhiteSpace(s.LocalizedString) ? s.LocalizedString :
+                            !string.IsNullOrWhiteSpace(s.SourceString) ? s.SourceString : s.Key,
+                        _ => ftext.Text ?? ftext.ToString()
+                    };
+                    if (!string.IsNullOrWhiteSpace(str))
+                        out_.Add((null, null, propPath, str));
+                    break;
+                }
+            case FPropertyTagType<FString> strTag:
+                {
+                    var str = strTag.Value.Text;
+                    if (!string.IsNullOrWhiteSpace(str))
+                        out_.Add((null, null, propPath, str));
+                    break;
+                }
+            case FPropertyTagType<FName> nameTag:
+                {
+                    var str = nameTag.Value.Text;
+                    if (!string.IsNullOrWhiteSpace(str) && !str.StartsWith("None"))
+                        out_.Add((null, null, propPath, str));
+                    break;
+                }
+            case FPropertyTagType<UScriptArray> arrTag:
+                {
+                    var items = arrTag.Value.Properties;
+                    for (int i = 0; i < items.Count; i++)
+                        WalkTag(items[i], $"{propPath}[{i}]", out_, depth + 1);
+                    break;
+                }
+            case FPropertyTagType<UScriptMap> mapTag:
+                {
+                    int i = 0;
+                    foreach (var kv in mapTag.Value.Properties)
+                    {
+                        WalkTag(kv.Key, $"{propPath}[{i}].Key", out_, depth + 1);
+                        if (kv.Value != null)
+                            WalkTag(kv.Value, $"{propPath}[{i}].Value", out_, depth + 1);
+                        i++;
+                    }
+                    break;
+                }
+            case FPropertyTagType<UScriptSet> setTag:
+                {
+                    var items = setTag.Value.Properties;
+                    for (int i = 0; i < items.Count; i++)
+                        WalkTag(items[i], $"{propPath}[{i}]", out_, depth + 1);
+                    break;
+                }
+            case FPropertyTagType<FScriptStruct> structTag:
+                {
+                    switch (structTag.Value.StructType)
+                    {
+                        case UObject nested:
+                            WalkUObjectProperties(nested, propPath, out_, depth + 1);
+                            break;
+                        case FStructFallback fallback:
+                            WalkStructFallback(fallback, propPath, out_, depth + 1);
+                            break;
+                    }
+                    break;
+                }
+            default:
+                {
+                    if (tag.GenericValue is UObject nestedObj)
+                        WalkUObjectProperties(nestedObj, propPath, out_, depth + 1);
+                    break;
+                }
         }
     }
 

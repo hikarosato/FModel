@@ -1,9 +1,11 @@
+﻿using SkiaSharp;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using SkiaSharp;
 
 namespace FModel.Views;
 
@@ -44,13 +46,13 @@ public partial class FontPreviewWindow
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Не вдалося завантажити '{displayName}': {ex.Message}";
+            StatusText.Text = $"Cannot load '{displayName}': {ex.Message}";
             return;
         }
 
         if (typeface is null)
         {
-            StatusText.Text = $"'{displayName}': SKTypeface.FromData повернув null.";
+            StatusText.Text = $"'{displayName}': SKTypeface.FromData returned null.";
             return;
         }
 
@@ -60,33 +62,40 @@ public partial class FontPreviewWindow
         StatusText.Text = string.Empty;
     }
 
-    // ── Побудова вкладки ──────────────────────────────────────────────────────
-
     private static TabItem BuildFontTab(string displayName, string sourceType, SKTypeface typeface)
     {
-        // Стан вкладки
         int glyphSize = 36;
-        int rangeStart = 0x0400;
-        int rangeEnd = 0x04FF;
+        int rangeStart = 0;
+        int rangeEnd = 0;
 
-        // ── Діапазони
-        var ranges = new (string Label, int Start, int End)[]
+        var ukrainianCodepoints = new int[]
         {
-            ("Cyrillic (U+0400–04FF)",            0x0400, 0x04FF),
-            ("Basic Latin (U+0020–007F)",     0x0020, 0x007F),
-            ("Latin Extended A (U+0080–00FF)",     0x0080, 0x00FF),
-            ("Greek (U+0370–03FF)",              0x0370, 0x03FF),
-            ("Digits and Punctuation (U+0020–0040)",  0x0020, 0x0040),
+            0x0410, 0x0411, 0x0412, 0x0413, 0x0490, 0x0414, 0x0415, 0x0404,
+            0x0416, 0x0417, 0x0418, 0x0406, 0x0407, 0x0419, 0x041A, 0x041B,
+            0x041C, 0x041D, 0x041E, 0x041F, 0x0420, 0x0421, 0x0422, 0x0423,
+            0x0424, 0x0425, 0x0426, 0x0427, 0x0428, 0x0429, 0x042C, 0x042E, 0x042F,
+            0x0430, 0x0431, 0x0432, 0x0433, 0x0491, 0x0434, 0x0435, 0x0454,
+            0x0436, 0x0437, 0x0438, 0x0456, 0x0457, 0x0439, 0x043A, 0x043B,
+            0x043C, 0x043D, 0x043E, 0x043F, 0x0440, 0x0441, 0x0442, 0x0443,
+            0x0444, 0x0445, 0x0446, 0x0447, 0x0448, 0x0449, 0x044C, 0x044E, 0x044F,
         };
 
-        // ── Корінь вкладки
+        var ranges = new (string Label, int Start, int End, int[]? Codepoints)[]
+        {
+            ("Ukrainian (А–Я)",                      0,      0,      ukrainianCodepoints),
+            ("Basic Latin (U+0020–007F)",            0x0020, 0x007F, null),
+            ("Digits and Punctuation (U+0020–0040)", 0x0020, 0x0040, null),
+            ("Latin Extended A (U+0080–00FF)",       0x0080, 0x00FF, null),
+            ("Greek (U+0370–03FF)",                  0x0370, 0x03FF, null),
+            ("Cyrillic (U+0400–04FF)",               0x0400, 0x04FF, null),
+        };
+
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // ── Рядок 0: ім'я + badge
         var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
         var nameText = new TextBlock
         {
@@ -137,7 +146,7 @@ public partial class FontPreviewWindow
         Grid.SetColumn(rangeLabel0, 3);
 
         var rangeCombo = new ComboBox { Width = 250 };
-        foreach (var (lbl, _, _) in ranges)
+        foreach (var (lbl, _, _, _) in ranges)
             rangeCombo.Items.Add(lbl);
         rangeCombo.SelectedIndex = 0;
         Grid.SetColumn(rangeCombo, 4);
@@ -174,10 +183,11 @@ public partial class FontPreviewWindow
         };
         Grid.SetRow(tabStatus, 3);
         root.Children.Add(tabStatus);
+        int[] customCodepoints = ukrainianCodepoints;
 
         void Render()
         {
-            RenderGlyphs(glyphPanel, tabStatus, typeface, glyphSize, rangeStart, rangeEnd);
+            RenderGlyphs(glyphPanel, tabStatus, typeface, glyphSize, rangeStart, rangeEnd, customCodepoints);
         }
 
         slider.ValueChanged += (_, e) =>
@@ -193,6 +203,7 @@ public partial class FontPreviewWindow
             int idx = rangeCombo.SelectedIndex;
             if (idx < 0 || idx >= ranges.Length) return;
             (rangeStart, rangeEnd) = (ranges[idx].Start, ranges[idx].End);
+            customCodepoints = ranges[idx].Codepoints;
             Render();
         };
 
@@ -231,10 +242,9 @@ public partial class FontPreviewWindow
         return tabItem;
     }
 
-    private static void RenderGlyphs(WrapPanel panel, TextBlock statusText, SKTypeface typeface, int glyphSize, int rangeStart, int rangeEnd)
+    private static void RenderGlyphs(WrapPanel panel, TextBlock statusText, SKTypeface typeface, int glyphSize, int rangeStart, int rangeEnd, int[]? codepoints = null)
     {
         panel.Children.Clear();
-
         if (typeface is null) return;
 
         using var paint = new SKPaint
@@ -249,7 +259,9 @@ public partial class FontPreviewWindow
         int rendered = 0;
         int missing = 0;
 
-        for (int cp = rangeStart; cp <= rangeEnd; cp++)
+        IEnumerable<int> source = codepoints ?? Enumerable.Range(rangeStart, rangeEnd - rangeStart + 1);
+
+        foreach (int cp in source)
         {
             var ch = char.ConvertFromUtf32(cp);
             ushort[] glyphIds = typeface.GetGlyphs(ch);
@@ -316,7 +328,7 @@ public partial class FontPreviewWindow
         }
         else
         {
-            // Червоний квадрат для відсутніх гліфів
+            // Red square for missing glyphs
             visual = new Border
             {
                 Width = cellSize,

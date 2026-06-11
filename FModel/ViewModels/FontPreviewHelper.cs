@@ -1,7 +1,6 @@
-using CUE4Parse.FileProvider.Objects;
+﻿using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.UE4.Assets.Exports.Engine.Font;
 using FModel.Services;
-using Org.BouncyCastle.Utilities;
 using System;
 using System.Linq;
 using System.Windows;
@@ -30,12 +29,8 @@ public static class FontPreviewHelper
             return;
         }
 
-        MessageBox.Show(
-            $"Непідтримуваний тип файлу для перегляду шрифту: .{ext}",
-            "Font Preview", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show($"Not supported file type: .{ext}", "Font Preview", MessageBoxButton.OK);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     private static void OpenFromRawFile(GameFile file)
     {
@@ -47,9 +42,7 @@ public static class FontPreviewHelper
             int fontOffset = FindFontOffset(bytes);
             if (fontOffset < 0)
             {
-                MessageBox.Show(
-                    "Файл не є TTF/OTF за сигнатурою. Перегляд неможливий.",
-                    "Font Preview", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("File is not a TTF/OTF by signature. Preview is not possible.", "Font Preview", MessageBoxButton.OK);
                 return;
             }
 
@@ -65,8 +58,7 @@ public static class FontPreviewHelper
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Помилка при завантаженні файлу:\n{ex.Message}\n\n{ex.StackTrace}",
-                "Font Preview", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error occurred while loading the file:\n{ex.Message}\n{ex.StackTrace}", "Font Preview", MessageBoxButton.OK);
         }
     }
 
@@ -78,8 +70,7 @@ public static class FontPreviewHelper
             var pkg = provider.LoadPackage(file);
             if (pkg is null)
             {
-                MessageBox.Show("Не вдалося завантажити UE-пакет.", "Font Preview",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Failed to load UE package.", "Font Preview", MessageBoxButton.OK);
                 return;
             }
 
@@ -92,9 +83,7 @@ public static class FontPreviewHelper
                             var data = fontFace.FontFaceData?.Data;
                             if (data is null || data.Length == 0)
                             {
-                                MessageBox.Show(
-                                    "UFontFace знайдено, але дані шрифту відсутні (можливо не inline).",
-                                    "Font Preview", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                MessageBox.Show("UFontFace found, but font data is missing (possibly not inline).", "Font Preview", MessageBoxButton.OK);
                                 return;
                             }
 
@@ -111,26 +100,18 @@ public static class FontPreviewHelper
                         }
 
                     case UFont:
-                        MessageBox.Show(
-                            "Це растровий UFont (атлас текстур). Векторних даних немає — " +
-                            "перегляд окремих гліфів недоступний.",
-                            "Font Preview", MessageBoxButton.OK, MessageBoxImage.Information);
+                        MessageBox.Show("This is a raster UFont (texture atlas). No vector data available — preview of individual glyphs is not possible.", "Font Preview", MessageBoxButton.OK);
                         return;
                 }
             }
 
-            MessageBox.Show(
-                "У пакеті не знайдено об'єктів типу UFontFace або UFont.",
-                "Font Preview", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("No UFontFace or UFont objects found in the package.", "Font Preview", MessageBoxButton.OK);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Помилка при завантаженні пакету:\n{ex.Message}",
-                "Font Preview", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error occurred while loading the package:\n{ex.Message}\n{ex.StackTrace}", "Font Preview", MessageBoxButton.OK);
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     private static int FindFontOffset(byte[] data)
     {

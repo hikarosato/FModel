@@ -1,10 +1,10 @@
-<adonisControls:AdonisWindow x:Class="FModel.Views.FontPreviewWindow"
+﻿<adonisControls:AdonisWindow x:Class="FModel.Views.FontPreviewWindow"
                              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                              xmlns:adonisUi="clr-namespace:AdonisUI;assembly=AdonisUI"
                              xmlns:adonisControls="clr-namespace:AdonisUI.Controls;assembly=AdonisUI"
                              xmlns:adonisExtensions="clr-namespace:AdonisUI.Extensions;assembly=AdonisUI"
-                             Title="Font Preview" Width="940" Height="655" 
+                             Title="Font Preview" Width="925" Height="580" 
                              WindowStartupLocation="CenterScreen" ResizeMode="CanResize" ShowInTaskbar="True"
                              IconVisibility="Collapsed">
     <Grid Margin="8">

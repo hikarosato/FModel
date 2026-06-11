@@ -117,7 +117,6 @@ public partial class SearchView
     }
 
     // Text Search
-
     private async void OnTextSearchClick(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_textSearchViewModel.SearchText)) return;
@@ -193,7 +192,6 @@ public partial class SearchView
     }
 
     // Icon helpers
-
     private void UpdateTextSearchButtonIcon()
     {
         if (!Dispatcher.CheckAccess())
@@ -215,7 +213,6 @@ public partial class SearchView
     }
 
     // Result navigation
-
     private async void OnTextResultDoubleClick(object sender, RoutedEventArgs e)
     {
         if (TextSearchListView?.SelectedItem is not TextSearchResult result || result.File == null)
